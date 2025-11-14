@@ -9,3 +9,6 @@ add_definitions(${PCL_DEFINITIONS})
 
 add_executable(separate_frames separate_frames.cpp)
 target_link_libraries(separate_frames ${PCL_LIBRARIES})
+
+add_executable(align_map align_map.cpp)
+target_link_libraries(align_map ${PCL_LIBRARIES})
