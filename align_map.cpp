@@ -1,5 +1,4 @@
-#include <pcl/io/pcd_io.h>
-#include <pcl/point_types.h>
+#include "utility.hpp"
 #include <pcl/registration/icp.h>
 #include <pcl/registration/ndt.h>
 #include <map>
@@ -8,49 +7,8 @@
 #include <iostream>
 #include <Eigen/Dense>
 
-template <typename T>
-bool loadPCDFile(const std::string& filename, typename pcl::PointCloud<T>::Ptr& cloud)
-{
-    if (pcl::io::loadPCDFile<T>(filename, *cloud) == -1) {
-        std::cerr << "Couldn't read file " << filename << std::endl;
-        return false;
-    }
-    std::cout << "Loaded " << cloud->points.size() << " data points from " << filename << std::endl;
-    return true;
-}
-
-template <typename T>
-void convertToROSCoordinate(typename pcl::PointCloud<T>::Ptr& cloud)
-{
-    for (size_t i = 0; i < cloud->points.size(); ++i) {
-        auto& point = cloud->points[i];
-        double x = point.x;
-        double y = point.y;
-        double z = point.z;
-        point.y = x;
-        point.z = y;
-        point.x = z;
-    }
-}
-
-template <typename T>
-void convertToLeGOLOAMCoordinate(typename pcl::PointCloud<T>::Ptr& cloud)
-{
-    for (size_t i = 0; i < cloud->points.size(); ++i) {
-        auto& point = cloud->points[i];
-        double x = point.x;
-        double y = point.y;
-        double z = point.z;
-        point.z = x;
-        point.x = y;
-        point.y = z;
-    }
-}
-
 int main()
 {
-    using PointType = pcl::PointXYZI;
-    using PointCloudPtr = pcl::PointCloud<PointType>::Ptr;
     Eigen::Vector3f align_to_base_t(1.4694, -0.65825, 0.05324);
     Eigen::Quaternionf align_to_base_q(0.768279, -0.0164673, 0.0277229, 0.6393025);
     align_to_base_q.normalize();
@@ -61,19 +19,13 @@ int main()
     PointCloudPtr global_map(new pcl::PointCloud<pcl::PointXYZI>);
     loadPCDFile<PointType>(global_map_file, global_map);
     convertToROSCoordinate<PointType>(global_map);
-    if (pcl::io::savePCDFileASCII("global_map_swapped.pcd", *global_map) == -1) {
-        std::cerr << "Failed to save swapped point cloud to global_map_swapped.pcd" << std::endl;
-        return -1;
-    }
+    savePCDFile<PointType>("global_map_swapped.pcd", global_map);
     std::string aligned_map_file = "aligned_map.pcd";
     PointCloudPtr aligned_map(new pcl::PointCloud<pcl::PointXYZI>);
     loadPCDFile<PointType>(aligned_map_file, aligned_map);
     convertToROSCoordinate<PointType>(aligned_map);
 
-    if (pcl::io::savePCDFileASCII("aligned_map_swapped.pcd", *aligned_map) == -1) {
-        std::cerr << "Failed to save swapped point cloud to aligned_map_swapped.pcd" << std::endl;
-        return -1;
-    }
+    savePCDFile<PointType>("aligned_map_swapped.pcd", aligned_map);
     auto R = align_to_base_q.toRotationMatrix();
     PointCloudPtr aligned_map_transformed(new pcl::PointCloud<pcl::PointXYZI>);
     aligned_map_transformed->resize(aligned_map->points.size());
@@ -130,8 +82,5 @@ int main()
     float pitch = euler_angles2[1];                                       // Y-axis rotation
     float roll = euler_angles2[2];                                        // X-axis rotation
     std::cout << "Yaw, Pitch, Roll " << yaw << " " << pitch << " " << roll << std::endl;
-    if (pcl::io::savePCDFileASCII("final_aligned_map.pcd", *final_cloud) == -1) {
-        std::cerr << "Failed to save final aligned point cloud to final_aligned_map.pcd" << std::endl;
-        return -1;
-    }
+    savePCDFile<PointType>("final_aligned_map.pcd", final_cloud);
 }
