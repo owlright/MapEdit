@@ -9,78 +9,73 @@
 
 int main()
 {
+    std::string base_map_name = "Maps/22F";
+    std::string aligned_map_name = "Maps/22F-ext";
+    std::string final_map_name = "Maps/22F-final";
     Eigen::Vector3f align_to_base_t(1.4694, -0.65825, 0.05324);
-    Eigen::Quaternionf align_to_base_q(0.768279, -0.0164673, 0.0277229, 0.6393025);
-    align_to_base_q.normalize();
-    // Convert quaternion to Euler angles (roll, pitch, yaw)
-    Eigen::Vector3f euler_angles = align_to_base_q.toRotationMatrix().eulerAngles(2, 1, 0); // ZYX order
-    std::cout << "Euler Angles (Yaw, Pitch, Roll): " << euler_angles.transpose() << std::endl;
-    std::string global_map_file = "global_map.pcd";
-    PointCloudPtr global_map(new pcl::PointCloud<pcl::PointXYZI>);
-    loadPCDFile<PointType>(global_map_file, global_map);
-    convertToROSCoordinate<PointType>(global_map);
-    savePCDFile<PointType>("global_map_swapped.pcd", global_map);
-    std::string aligned_map_file = "aligned_map.pcd";
-    PointCloudPtr aligned_map(new pcl::PointCloud<pcl::PointXYZI>);
-    loadPCDFile<PointType>(aligned_map_file, aligned_map);
-    convertToROSCoordinate<PointType>(aligned_map);
+    Eigen::Vector3f align_to_base_rpy(0.57 * M_PI / 180.0, 3.43 * M_PI / 180.0, 79.5 * M_PI / 180.0); // Convert degrees to radians
 
-    savePCDFile<PointType>("aligned_map_swapped.pcd", aligned_map);
-    auto R = align_to_base_q.toRotationMatrix();
+    // NOTICE: DO NOT Try to understand this conversion, it is just to convert from ROS coordinate to LeGO-LOAM coordinate
+    Eigen::Vector3f align_to_base_t_lego;
+    align_to_base_t_lego.x() = align_to_base_t.y();
+    align_to_base_t_lego.y() = align_to_base_t.z();
+    align_to_base_t_lego.z() = align_to_base_t.x();
+    Eigen::Vector3f align_to_base_rpy_lego;
+    align_to_base_rpy_lego.x() = align_to_base_rpy.y();
+    align_to_base_rpy_lego.y() = align_to_base_rpy.z();
+    align_to_base_rpy_lego.z() = align_to_base_rpy.x();
+
+    PointCloudPtr base_map(new pcl::PointCloud<pcl::PointXYZI>);
+    loadPCDFile<PointType>(base_map_name + "/edited/CornerMap_active.pcd", base_map);
+    // convertToROSCoordinate<PointType>(base_map);
+    // savePCDFile<PointType>(base_map_name + "/GlobalMap_ros.pcd", base_map); // 调试
+
+    PointCloudPtr aligned_map(new pcl::PointCloud<pcl::PointXYZI>);
+    loadPCDFile<PointType>(aligned_map_name + "/CornerMap.pcd", aligned_map);
+    // convertToROSCoordinate<PointType>(aligned_map);
+    // savePCDFile<PointType>(aligned_map_name + "/GlobalMap_ros.pcd", aligned_map); // 调试
+
+    auto align_to_base_R_lego = (Eigen::AngleAxisf(align_to_base_rpy_lego[2], Eigen::Vector3f::UnitZ()) *
+                                 Eigen::AngleAxisf(align_to_base_rpy_lego[1], Eigen::Vector3f::UnitY()) *
+                                 Eigen::AngleAxisf(align_to_base_rpy_lego[0], Eigen::Vector3f::UnitX())).toRotationMatrix();
+
     PointCloudPtr aligned_map_transformed(new pcl::PointCloud<pcl::PointXYZI>);
     aligned_map_transformed->resize(aligned_map->points.size());
-    for (size_t i = 0; i < aligned_map->points.size(); ++i) {
-        const auto& point = aligned_map->points[i];
-        Eigen::Vector3f pt(point.x, point.y, point.z);
-        // Apply rotation and translation
-        Eigen::Vector3f pt_transformed = R * pt + align_to_base_t;
-        // Assign transformed point
-        auto& new_point = aligned_map_transformed->points[i];
-        new_point.x = pt_transformed.x();
-        new_point.y = pt_transformed.y();
-        new_point.z = pt_transformed.z();
-        new_point.intensity = point.intensity;
-    }
-
-    // Save the transformed point cloud
-    std::string transformed_map_file = "aligned_map_transformed.pcd";
-    // pcl::IterativeClosestPoint<PointType, PointType> icp;
-    // icp.setInputSource(aligned_map_transformed);
-    // icp.setInputTarget(global_map);
-    // PointCloudPtr final_cloud(new pcl::PointCloud<PointType>);
-    // icp.align(*final_cloud);
-    // std::cout << "ICP has converged: " << icp.hasConverged() << " score: " << icp.getFitnessScore() << std::endl;
-    // Eigen::Matrix4f transformation = icp.getFinalTransformation();
-    // std::cout << "Final transformation matrix:\n" << transformation << std::endl;d.pcd";
-    if (pcl::io::savePCDFileASCII(transformed_map_file, *aligned_map_transformed) == -1) {
-        std::cerr << "Failed to save transformed point cloud to " << transformed_map_file << std::endl;
-        return -1;
-    }
-    std::cout << "Saved transformed point cloud to " << transformed_map_file << std::endl;
+    applyTransform<PointType>(aligned_map, aligned_map_transformed, align_to_base_R_lego, align_to_base_t_lego);
+    savePCDFile<PointType>(aligned_map_name + "/GlobalMap_transformed.pcd", aligned_map_transformed);
 
     PointCloudPtr final_cloud(new pcl::PointCloud<PointType>);
-    // pcl::IterativeClosestPoint<PointType, PointType> icp;
-    // icp.setInputSource(aligned_map_transformed);
-    // icp.setInputTarget(global_map);
-
-    // icp.align(*final_cloud);
-    // std::cout << "ICP has converged: " << icp.hasConverged() << " score: " << icp.getFitnessScore() << std::endl;
-    // Eigen::Matrix4f transformation = icp.getFinalTransformation();
     pcl::NormalDistributionsTransform<PointType, PointType> ndt;
     ndt.setInputSource(aligned_map_transformed);
-    ndt.setInputTarget(global_map);
+    ndt.setInputTarget(base_map);
     ndt.align(*final_cloud);
-    auto transformation = ndt.getFinalTransformation();
-    std::cout << "Final transformation matrix:\n" << transformation << std::endl;
+    auto finalTransformation = ndt.getFinalTransformation(); // NOTICE: 这是我们最终需要的变换矩阵
+    std::cout << "Final finalTransformation matrix:\n" << finalTransformation << std::endl;
+    // 从finalTransformation中提取旋转矩阵R_final和位移向量t_final
+    Eigen::Matrix3f R_ndt = finalTransformation.block<3, 3>(0, 0);
+    Eigen::Vector3f t_ndt = finalTransformation.block<3, 1>(0, 3);
+    Eigen::Matrix3f R_final = R_ndt * align_to_base_R_lego;
+    Eigen::Vector3f t_final = R_ndt * align_to_base_t_lego + t_ndt;
 
-    // Extract rotation matrix (top-left 3x3 submatrix)
-    Eigen::Matrix3f rotation_matrix = transformation.block<3, 3>(0, 0);
+    /**
+     * 加载CornerMap.pcd、SurfMap.pcd，应用R_final和t_final变换后与base_map的地图点云合并，最后合并成GlobalMap.pcd
+     */
+    PointCloudPtr base_corner_map(new pcl::PointCloud<PointType>);
+    loadPCDFile<PointType>(base_map_name + "/edited/CornerMap_active.pcd", base_corner_map);
+    PointCloudPtr aligned_corner_map(new pcl::PointCloud<PointType>);
+    loadPCDFile<PointType>(aligned_map_name + "/CornerMap.pcd", aligned_corner_map);
+    PointCloudPtr final_corner_map(new pcl::PointCloud<PointType>);
+    applyTransform<PointType>(aligned_corner_map, R_final, t_final);
+    *final_corner_map = *base_corner_map + *aligned_corner_map;
+    savePCDFile<PointType>(final_map_name + "/CornerMap.pcd", final_corner_map);
 
-    // Convert rotation matrix to Euler angles (ZYX order: Yaw, Pitch, Roll)
-    Eigen::Vector3f euler_angles2 = rotation_matrix.eulerAngles(2, 1, 0); // ZYX order
-    float yaw = euler_angles2[0];                                         // Z-axis rotation
-    float pitch = euler_angles2[1];                                       // Y-axis rotation
-    float roll = euler_angles2[2];                                        // X-axis rotation
-    std::cout << "Yaw, Pitch, Roll " << yaw << " " << pitch << " " << roll << std::endl;
-    savePCDFile<PointType>("final_aligned_map.pcd", final_cloud);
+    PointCloudPtr base_surf_map(new pcl::PointCloud<PointType>);
+    loadPCDFile<PointType>(base_map_name + "/edited/SurfMap_active.pcd", base_surf_map);
+    PointCloudPtr aligned_surf_map(new pcl::PointCloud<PointType>);
+    loadPCDFile<PointType>(aligned_map_name + "/SurfMap.pcd", aligned_surf_map);
+    PointCloudPtr final_surf_map(new pcl::PointCloud<PointType>);
+    applyTransform<PointType>(aligned_surf_map, R_final, t_final);
+    *final_surf_map = *base_surf_map + *aligned_surf_map;
+    savePCDFile<PointType>(final_map_name + "/SurfMap.pcd", final_surf_map);
+
 }
