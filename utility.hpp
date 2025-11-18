@@ -1,3 +1,4 @@
+#pragma once
 #include <string>
 #include <pcl/io/pcd_io.h>
 #include <pcl/point_types.h>

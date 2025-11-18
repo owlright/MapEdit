@@ -1,5 +1,6 @@
 #include "utility.hpp"
 #include "Pose.hpp"
+#include "MapInfo.h"
 #include <pcl/registration/icp.h>
 #include <pcl/registration/ndt.h>
 #include <map>
