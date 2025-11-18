@@ -8,25 +8,70 @@
 #include <string>
 #include <iostream>
 #include <Eigen/Dense>
+#include <yaml-cpp/yaml.h>
 
-int main()
+const char* config_file = "align.yaml";
+double thre_z_min = -0.2;
+double thre_z_max = 2.0;
+std::string base_map_name = "Maps/22F";
+std::string aligned_map_name = "Maps/22F-ext";
+std::string final_map_name = "Maps/22F-final";
+Eigen::Vector3f align_to_base_t = Eigen::Vector3f::Zero();
+Eigen::Vector3f align_to_base_rpy_deg = Eigen::Vector3f::Zero();
+
+void printParams() {
+    std::cout << "==================== " << "MapEdit's params" <<  " ===================="<< std::endl;
+    std::cout << "base_map_name: " << base_map_name << std::endl;
+    std::cout << "aligned_map_name: " << aligned_map_name << std::endl;
+    std::cout << "final_map_name: " << final_map_name << std::endl;
+    std::cout << "align_to_base_t: [" << align_to_base_t.transpose() << "]" << std::endl;
+    std::cout << "align_to_base_rpy_deg: [" << align_to_base_rpy_deg.transpose() << "]" << std::endl;
+    std::cout << "thre_z_min: " << thre_z_min << std::endl;
+    std::cout << "thre_z_max: " << thre_z_max << std::endl;
+    std::cout << "==================== " << "MapEdit's params" <<  " ===================="<< std::endl;
+}
+
+int main(int argc, char **argv)
 {
-    std::string base_map_name = "Maps/22F";
-    std::string aligned_map_name = "Maps/22F-ext";
-    std::string final_map_name = "Maps/22F-final";
-    Eigen::Vector3f align_to_base_t(1.4694, -0.65825, 0.05324);
-    Eigen::Vector3f align_to_base_rpy(0.57 * M_PI / 180.0, 3.43 * M_PI / 180.0, 79.5 * M_PI / 180.0); // Convert degrees to radians
+    // =================== 1.读取配置参数 ===================
+    try {
+        YAML::Node cfg = YAML::LoadFile(config_file);
+        base_map_name = cfg["base_map_dir"].as<std::string>("Maps/22F");
+        aligned_map_name = cfg["align_map_dir"].as<std::string>("Maps/22F-ext");
+        final_map_name = cfg["final_map_dir"].as<std::string>("Maps/22F-final");
+        thre_z_min = cfg["thre_z_min"].as<double>(-0.2);
+        thre_z_max = cfg["thre_z_max"].as<double>(2.0);
+        std::vector<double> t_vec = cfg["align_to_base_t"].as<std::vector<double>>();
+        if (t_vec.size() == 3) {
+            align_to_base_t = Eigen::Vector3f(t_vec[0], t_vec[1], t_vec[2]);
+        } else {
+            std::cerr << "align_to_base_t size is not 3!" << std::endl;
+            return -1;
+        }
+        std::vector<double> rpy_vec = cfg["align_to_base_rpy_deg"].as<std::vector<double>>();
+        if (rpy_vec.size() == 3) {
+            align_to_base_rpy_deg = Eigen::Vector3f(rpy_vec[0] * M_PI / 180.0, rpy_vec[1] * M_PI / 180.0, rpy_vec[2] * M_PI / 180.0);
+        } else {
+            std::cerr << "align_to_base_rpy_deg size is not 3!" << std::endl;
+            return -1;
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "Error loading " << config_file << e.what() << std::endl;
+        return -1;
+    }
+    printParams();
 
-    // NOTICE: DO NOT Try to understand this conversion, it is just to convert from ROS coordinate to LeGO-LOAM coordinate
+    // NOTICE: Convert from ROS coordinate to LeGO-LOAM coordinate
     Eigen::Vector3f align_to_base_t_lego;
     align_to_base_t_lego.x() = align_to_base_t.y();
     align_to_base_t_lego.y() = align_to_base_t.z();
     align_to_base_t_lego.z() = align_to_base_t.x();
     Eigen::Vector3f align_to_base_rpy_lego;
-    align_to_base_rpy_lego.x() = align_to_base_rpy.y();
-    align_to_base_rpy_lego.y() = align_to_base_rpy.z();
-    align_to_base_rpy_lego.z() = align_to_base_rpy.x();
+    align_to_base_rpy_lego.x() = align_to_base_rpy_deg.y();
+    align_to_base_rpy_lego.y() = align_to_base_rpy_deg.z();
+    align_to_base_rpy_lego.z() = align_to_base_rpy_deg.x();
 
+    // =================== 2.加载点云并初步对齐 ===================
     PointCloudPtr base_map(new pcl::PointCloud<pcl::PointXYZI>);
     loadPCDFile<PointType>(base_map_name + "/edited/CornerMap_active.pcd", base_map);
     // convertToROSCoordinate<PointType>(base_map);
@@ -44,8 +89,9 @@ int main()
     PointCloudPtr aligned_map_transformed(new pcl::PointCloud<pcl::PointXYZI>);
     aligned_map_transformed->resize(aligned_map->points.size());
     applyTransform<PointType>(aligned_map, aligned_map_transformed, align_to_base_R_lego, align_to_base_t_lego);
-    savePCDFile<PointType>(aligned_map_name + "/GlobalMap_transformed.pcd", aligned_map_transformed);
+    // savePCDFile<PointType>(aligned_map_name + "/GlobalMap_transformed.pcd", aligned_map_transformed);
 
+    // =================== 3.NDT精细对齐 ===================
     PointCloudPtr final_cloud(new pcl::PointCloud<PointType>);
     pcl::NormalDistributionsTransform<PointType, PointType> ndt;
     ndt.setInputSource(aligned_map_transformed);
@@ -53,15 +99,16 @@ int main()
     ndt.align(*final_cloud);
     auto finalTransformation = ndt.getFinalTransformation(); // NOTICE: 这是我们最终需要的变换矩阵
     std::cout << "Final finalTransformation matrix:\n" << finalTransformation << std::endl;
-    // 从finalTransformation中提取旋转矩阵R_final和位移向量t_final
     Eigen::Matrix3f R_ndt = finalTransformation.block<3, 3>(0, 0);
     Eigen::Vector3f t_ndt = finalTransformation.block<3, 1>(0, 3);
+    // 将初步对齐的变换和NDT的变换结合，得到最终的变换
     Eigen::Matrix3f R_final = R_ndt * align_to_base_R_lego;
     Eigen::Vector3f t_final = R_ndt * align_to_base_t_lego + t_ndt;
 
-    /**
-     * 加载CornerMap.pcd、SurfMap.pcd，应用R_final和t_final变换后与base_map的地图点云合并，最后合并成GlobalMap.pcd
-     */
+    // =================== 4.根据得到的变换合并地图 ===================
+    // 加载CornerMap.pcd、SurfMap.pcd，应用R_final和t_final变换后与base_map的地图点云合并，最后合并成GlobalMap.pcd
+    // trajectory.pcd中的点也需要应用同样的变换，并且修改点的intensity值以避免与base_map的轨迹点冲突
+    // pose.txt中的位姿也需要相应修改
     PointCloudPtr base_corner_map(new pcl::PointCloud<PointType>);
     loadPCDFile<PointType>(base_map_name + "/edited/CornerMap_active.pcd", base_corner_map);
     PointCloudPtr aligned_corner_map(new pcl::PointCloud<PointType>);
@@ -80,7 +127,12 @@ int main()
     *final_surf_map = *base_surf_map + *aligned_surf_map;
     savePCDFile<PointType>(final_map_name + "/SurfMap.pcd", final_surf_map);
 
-    // 处理pose.txt
+    PointCloudPtr final_global_map(new pcl::PointCloud<PointType>);
+    *final_global_map = *final_corner_map + *final_surf_map;
+    savePCDFile<PointType>(final_map_name + "/GlobalMap.pcd", final_global_map);
+    getBoundary(final_global_map).dumpConfig(final_map_name + "/map.ini");
+
+    // =================== 5.合并pose.txt和trajectory.pcd ===================
     std::map<int, Pose> base_poses;
     loadPosesFromFile(base_map_name + "/pose.txt", base_poses);
     std::map<int, Pose> aligned_poses;
@@ -110,7 +162,11 @@ int main()
         auto &point = aligned_trajectory->points[i];
         int idx = static_cast<int>(point.intensity);
         point.intensity = idx + base_traj_max_idx + 1;
-
+        Eigen::Vector3f pt(point.x, point.y, point.z);
+        Eigen::Vector3f pt_transformed = R_final * pt + t_final;
+        point.x = pt_transformed.x();
+        point.y = pt_transformed.y();
+        point.z = pt_transformed.z();
         auto &pose = aligned_poses.at(idx);
         pose.index = idx + base_traj_max_idx + 1;
         pose.position = align_to_base_R_lego * pose.position + align_to_base_t_lego;
