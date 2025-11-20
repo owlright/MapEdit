@@ -71,9 +71,14 @@ int main(int argc, char **argv)
     align_to_base_rpy_lego.y() = align_to_base_rpy_deg.z();
     align_to_base_rpy_lego.z() = align_to_base_rpy_deg.x();
 
+    std::map<int, Pose> base_poses;
+    loadPosesFromFile(base_map_name + "/pose.txt", base_poses);
+    std::map<int, Pose> aligned_poses;
+    loadPosesFromFile(aligned_map_name + "/pose.txt", aligned_poses);
+
     // =================== 2.加载点云并初步对齐 ===================
     PointCloudPtr base_map(new pcl::PointCloud<pcl::PointXYZI>);
-    loadPCDFile<PointType>(base_map_name + "/edited/CornerMap_active.pcd", base_map);
+    loadPCDFile<PointType>(base_map_name + "/CornerMap.pcd", base_map);
     // convertToROSCoordinate<PointType>(base_map);
     // savePCDFile<PointType>(base_map_name + "/GlobalMap_ros.pcd", base_map); // 调试
 
@@ -89,14 +94,22 @@ int main(int argc, char **argv)
     PointCloudPtr aligned_map_transformed(new pcl::PointCloud<pcl::PointXYZI>);
     aligned_map_transformed->resize(aligned_map->points.size());
     applyTransform<PointType>(aligned_map, aligned_map_transformed, align_to_base_R_lego, align_to_base_t_lego);
-    // savePCDFile<PointType>(aligned_map_name + "/GlobalMap_transformed.pcd", aligned_map_transformed);
+    savePCDFile<PointType>(aligned_map_name + "/GlobalMap_transformed.pcd", aligned_map_transformed);
 
+    // =================== 2.1 找到aligned_map_transformed范围内的key poses删除掉===================
+    auto boundary = getBoundary(aligned_map_transformed);
+    std::cout << boundary << std::endl;
+    exit(0); // 调试boundary
     // =================== 3.NDT精细对齐 ===================
     PointCloudPtr final_cloud(new pcl::PointCloud<PointType>);
     pcl::NormalDistributionsTransform<PointType, PointType> ndt;
+    ndt.setMaximumIterations(25); // 设置最大迭代次数为 50
+    ndt.setTransformationEpsilon(0.001); // 设置收敛阈值为 0.01
     ndt.setInputSource(aligned_map_transformed);
     ndt.setInputTarget(base_map);
     ndt.align(*final_cloud);
+    std::cout << "NDT has converged: " << ndt.hasConverged() << ", iterations: " << ndt.getFinalNumIteration()
+              << ", TransformationEpsilon: " << ndt.getTransformationEpsilon() << ", score: " << ndt.getFitnessScore() << std::endl;
     auto finalTransformation = ndt.getFinalTransformation(); // NOTICE: 这是我们最终需要的变换矩阵
     std::cout << "Final finalTransformation matrix:\n" << finalTransformation << std::endl;
     Eigen::Matrix3f R_ndt = finalTransformation.block<3, 3>(0, 0);
@@ -110,16 +123,17 @@ int main(int argc, char **argv)
     // trajectory.pcd中的点也需要应用同样的变换，并且修改点的intensity值以避免与base_map的轨迹点冲突
     // pose.txt中的位姿也需要相应修改
     PointCloudPtr base_corner_map(new pcl::PointCloud<PointType>);
-    loadPCDFile<PointType>(base_map_name + "/edited/CornerMap_active.pcd", base_corner_map);
+    loadPCDFile<PointType>(base_map_name + "/CornerMap.pcd", base_corner_map);
     PointCloudPtr aligned_corner_map(new pcl::PointCloud<PointType>);
     loadPCDFile<PointType>(aligned_map_name + "/CornerMap.pcd", aligned_corner_map);
     PointCloudPtr final_corner_map(new pcl::PointCloud<PointType>);
     applyTransform<PointType>(aligned_corner_map, R_final, t_final);
+    savePCDFile<PointType>(aligned_map_name + "/CornerMap_transformed_ndt.pcd", aligned_corner_map);
     *final_corner_map = *base_corner_map + *aligned_corner_map;
     savePCDFile<PointType>(final_map_name + "/CornerMap.pcd", final_corner_map);
 
     PointCloudPtr base_surf_map(new pcl::PointCloud<PointType>);
-    loadPCDFile<PointType>(base_map_name + "/edited/SurfMap_active.pcd", base_surf_map);
+    loadPCDFile<PointType>(base_map_name + "/SurfMap.pcd", base_surf_map);
     PointCloudPtr aligned_surf_map(new pcl::PointCloud<PointType>);
     loadPCDFile<PointType>(aligned_map_name + "/SurfMap.pcd", aligned_surf_map);
     PointCloudPtr final_surf_map(new pcl::PointCloud<PointType>);
@@ -133,16 +147,11 @@ int main(int argc, char **argv)
     getBoundary(final_global_map).dumpConfig(final_map_name + "/map.ini");
 
     // =================== 5.合并pose.txt和trajectory.pcd ===================
-    std::map<int, Pose> base_poses;
-    loadPosesFromFile(base_map_name + "/pose.txt", base_poses);
-    std::map<int, Pose> aligned_poses;
-    loadPosesFromFile(aligned_map_name + "/pose.txt", aligned_poses);
-
     int base_traj_max_idx = -1;
 
     // 加载trajectory_active.pcd才能知道哪些位姿没有被删除
     PointCloudPtr base_trajectory(new pcl::PointCloud<pcl::PointXYZI>);
-    loadPCDFile<PointType>(base_map_name + "/edited/trajectory_active.pcd", base_trajectory);
+    loadPCDFile<PointType>(base_map_name + "/trajectory.pcd", base_trajectory);
     for (size_t i = 0; i < base_trajectory->points.size(); ++i) {
         auto& point = base_trajectory->points[i];
         int idx = static_cast<int>(point.intensity);
