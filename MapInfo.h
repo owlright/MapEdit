@@ -1,14 +1,14 @@
 #include "utility.hpp"
 #include <iostream>
-struct MapInfo
+struct MapInfo // NOTICE: 按照ROS坐标系定义
 {
-    double x_min;
-    double x_max;
-    double y_min;
-    double y_max;
+    float x_min;
+    float x_max;
+    float y_min;
+    float y_max;
     int width;
     int height;
-    double map_resolution = 0.05;
+    float map_resolution = 0.05;
 
     bool dumpConfig(const std::string& filename)
     {
@@ -43,13 +43,14 @@ inline std::ostream& operator<<(std::ostream& os, const MapInfo& m)
     return os;
 }
 
-MapInfo getBoundary(PointCloudPtr cloud, const double thre_z_min = -0.2, const double thre_z_max = 2.0)
+MapInfo getBoundary(PointCloudPtr cloud, const float thre_z_min = -0.2, const float thre_z_max = 2.0)
 {
     MapInfo map_info;
     float x_min = std::numeric_limits<float>::max();
     float x_max = std::numeric_limits<float>::lowest();
     float y_min = std::numeric_limits<float>::max();
     float y_max = std::numeric_limits<float>::lowest();
+
     // lego-loam建立的地图 not the same with ros
     // Eigen::Affine3f transform = Eigen::Affine3f::Identity();
     // transform.rotate(Eigen::AngleAxisf(M_PI / 2, Eigen::Vector3f::UnitX())); // fix frame trans,later
