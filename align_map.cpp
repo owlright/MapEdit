@@ -105,34 +105,7 @@ int main(int argc, char **argv)
     Eigen::Matrix3f R_final = R_ndt * align_to_base_R_lego;
     Eigen::Vector3f t_final = R_ndt * align_to_base_t_lego + t_ndt;
 
-    // =================== 4.根据得到的变换合并地图 ===================
-    // 加载CornerMap.pcd、SurfMap.pcd，应用R_final和t_final变换后与base_map的地图点云合并，最后合并成GlobalMap.pcd
-    // trajectory.pcd中的点也需要应用同样的变换，并且修改点的intensity值以避免与base_map的轨迹点冲突
-    // pose.txt中的位姿也需要相应修改
-    PointCloudPtr base_corner_map(new pcl::PointCloud<PointType>);
-    loadPCDFile<PointType>(base_map_name + "/edited/CornerMap_active.pcd", base_corner_map);
-    PointCloudPtr aligned_corner_map(new pcl::PointCloud<PointType>);
-    loadPCDFile<PointType>(aligned_map_name + "/CornerMap.pcd", aligned_corner_map);
-    PointCloudPtr final_corner_map(new pcl::PointCloud<PointType>);
-    applyTransform<PointType>(aligned_corner_map, R_final, t_final);
-    *final_corner_map = *base_corner_map + *aligned_corner_map;
-    savePCDFile<PointType>(final_map_name + "/CornerMap.pcd", final_corner_map);
-
-    PointCloudPtr base_surf_map(new pcl::PointCloud<PointType>);
-    loadPCDFile<PointType>(base_map_name + "/edited/SurfMap_active.pcd", base_surf_map);
-    PointCloudPtr aligned_surf_map(new pcl::PointCloud<PointType>);
-    loadPCDFile<PointType>(aligned_map_name + "/SurfMap.pcd", aligned_surf_map);
-    PointCloudPtr final_surf_map(new pcl::PointCloud<PointType>);
-    applyTransform<PointType>(aligned_surf_map, R_final, t_final);
-    *final_surf_map = *base_surf_map + *aligned_surf_map;
-    savePCDFile<PointType>(final_map_name + "/SurfMap.pcd", final_surf_map);
-
-    PointCloudPtr final_global_map(new pcl::PointCloud<PointType>);
-    *final_global_map = *final_corner_map + *final_surf_map;
-    savePCDFile<PointType>(final_map_name + "/GlobalMap.pcd", final_global_map);
-    getBoundary(final_global_map).dumpConfig(final_map_name + "/map.ini");
-
-    // =================== 5.合并pose.txt和trajectory.pcd ===================
+    // =================== 4.合并pose.txt和trajectory.pcd ===================
     std::map<int, Pose> base_poses;
     loadPosesFromFile(base_map_name + "/pose.txt", base_poses);
     std::map<int, Pose> aligned_poses;
@@ -197,5 +170,41 @@ int main(int argc, char **argv)
     *merged_trajectory = *base_trajectory + *aligned_trajectory;
     savePCDFile<PointType>(final_map_name + "/trajectory.pcd", merged_trajectory); // 2.保存融合后的trajectory.pcd
 
+    // =================== 5.根据得到的变换合并地图 ===================
+    // 加载CornerMap.pcd、SurfMap.pcd，应用R_final和t_final变换后与base_map的地图点云合并，最后合并成GlobalMap.pcd
+    // trajectory.pcd中的点也需要应用同样的变换，并且修改点的intensity值以避免与base_map的轨迹点冲突
+    // pose.txt中的位姿也需要相应修改
+    PointCloudPtr base_corner_map(new pcl::PointCloud<PointType>);
+    loadPCDFile<PointType>(base_map_name + "/edited/CornerMap_active.pcd", base_corner_map);
+    PointCloudPtr aligned_corner_map(new pcl::PointCloud<PointType>);
+    loadPCDFile<PointType>(aligned_map_name + "/CornerMap.pcd", aligned_corner_map);
+    for (size_t i = 0; i < aligned_corner_map->points.size(); ++i) {
+        auto& point = aligned_corner_map->points[i];
+        int idx = static_cast<int>(point.intensity);
+        point.intensity = idx + base_traj_max_idx + 1;
+    }
+    PointCloudPtr final_corner_map(new pcl::PointCloud<PointType>);
+    applyTransform<PointType>(aligned_corner_map, R_final, t_final);
+    *final_corner_map = *base_corner_map + *aligned_corner_map;
+    savePCDFile<PointType>(final_map_name + "/CornerMap.pcd", final_corner_map);
+
+    PointCloudPtr base_surf_map(new pcl::PointCloud<PointType>);
+    loadPCDFile<PointType>(base_map_name + "/edited/SurfMap_active.pcd", base_surf_map);
+    PointCloudPtr aligned_surf_map(new pcl::PointCloud<PointType>);
+    loadPCDFile<PointType>(aligned_map_name + "/SurfMap.pcd", aligned_surf_map);
+    for (size_t i = 0; i < aligned_surf_map->points.size(); ++i) {
+        auto& point = aligned_surf_map->points[i];
+        int idx = static_cast<int>(point.intensity);
+        point.intensity = idx + base_traj_max_idx + 1;
+    }
+    PointCloudPtr final_surf_map(new pcl::PointCloud<PointType>);
+    applyTransform<PointType>(aligned_surf_map, R_final, t_final);
+    *final_surf_map = *base_surf_map + *aligned_surf_map;
+    savePCDFile<PointType>(final_map_name + "/SurfMap.pcd", final_surf_map);
+
+    PointCloudPtr final_global_map(new pcl::PointCloud<PointType>);
+    *final_global_map = *final_corner_map + *final_surf_map;
+    savePCDFile<PointType>(final_map_name + "/GlobalMap.pcd", final_global_map);
+    getBoundary(final_global_map).dumpConfig(final_map_name + "/map.ini");
 
 }
