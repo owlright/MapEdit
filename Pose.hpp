@@ -5,8 +5,9 @@
 
 struct Pose
 {
+    // NOTICE: position和rpy是LeGO-LOAM的顺序
     Eigen::Vector3f position;
-    Eigen::Vector3f rpy; // NOTICE: 这里是LeGO-LOAM的顺序
+    Eigen::Vector3f rpy;
     int index;
     double timestamp;
     bool active = false;
