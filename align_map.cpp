@@ -9,7 +9,10 @@
 #include <iostream>
 #include <Eigen/Dense>
 #include <yaml-cpp/yaml.h>
-
+#include <unordered_set>
+#define LEGO_TO_ROS_X(point) (point.y)
+#define LEGO_TO_ROS_Y(point) (point.z)
+#define LEGO_TO_ROS_Z(point) (point.x)
 const char* config_file = "align.yaml";
 double thre_z_min = -0.2;
 double thre_z_max = 2.0;
@@ -31,6 +34,25 @@ void printParams() {
     std::cout << "==================== " << "MapEdit's params" <<  " ===================="<< std::endl;
 }
 
+// 判断点是否在多边形内
+bool isPointInPolygon(const Eigen::Vector2f& point, const std::vector<Eigen::Vector2f>& polygon) {
+    int n = polygon.size();
+    bool inside = false;
+
+    for (int i = 0, j = n - 1; i < n; j = i++) {
+        const auto& pi = polygon[i];
+        const auto& pj = polygon[j];
+
+        // 判断射线是否与边相交
+        if (((pi.y() > point.y()) != (pj.y() > point.y())) &&
+            (point.x() < (pj.x() - pi.x()) * (point.y() - pi.y()) / (pj.y() - pi.y()) + pi.x())) {
+            inside = !inside;
+        }
+    }
+
+    return inside;
+}
+
 int main(int argc, char **argv)
 {
     // =================== 1.读取配置参数 ===================
@@ -41,6 +63,7 @@ int main(int argc, char **argv)
         final_map_name = cfg["final_map_dir"].as<std::string>("Maps/22F-final");
         thre_z_min = cfg["thre_z_min"].as<double>(-0.2);
         thre_z_max = cfg["thre_z_max"].as<double>(2.0);
+
         std::vector<double> t_vec = cfg["align_to_base_t"].as<std::vector<double>>();
         if (t_vec.size() == 3) {
             align_to_base_t = Eigen::Vector3f(t_vec[0], t_vec[1], t_vec[2]);
@@ -78,12 +101,12 @@ int main(int argc, char **argv)
 
     // =================== 2.加载点云并初步对齐 ===================
     PointCloudPtr base_map(new pcl::PointCloud<pcl::PointXYZI>);
-    loadPCDFile<PointType>(base_map_name + "/CornerMap.pcd", base_map);
+    loadPCDFile<PointType>(base_map_name + "/GlobalMap.pcd", base_map);
     // convertToROSCoordinate<PointType>(base_map);
     // savePCDFile<PointType>(base_map_name + "/GlobalMap_ros.pcd", base_map); // 调试
 
     PointCloudPtr aligned_map(new pcl::PointCloud<pcl::PointXYZI>);
-    loadPCDFile<PointType>(aligned_map_name + "/CornerMap.pcd", aligned_map);
+    loadPCDFile<PointType>(aligned_map_name + "/GlobalMap.pcd", aligned_map);
     // convertToROSCoordinate<PointType>(aligned_map);
     // savePCDFile<PointType>(aligned_map_name + "/GlobalMap_ros.pcd", aligned_map); // 调试
 
@@ -99,6 +122,35 @@ int main(int argc, char **argv)
     // =================== 2.1 找到aligned_map_transformed范围内的key poses删除掉===================
     auto boundary = getBoundary(aligned_map_transformed);
     std::cout << boundary << std::endl;
+    // std::unordered_set<int> base_poses_to_remove;
+    // for (auto& kv : base_poses) {
+    //     const auto& pose = kv.second;
+    //     if (pose.position.x() < boundary.lego_x_min() || pose.position.x() > boundary.lego_x_max()||
+    //         pose.position.y() < boundary.lego_y_min() || pose.position.y() > boundary.lego_y_max()) {
+    //         kv.second.active = true;
+    //     } else {
+    //         // 在范围内，删除该位姿
+    //         kv.second.active = false;
+    //         base_poses_to_remove.insert(pose.index);
+    //         // std::cout << "Removing base pose: " << pose << std::endl;
+    //     }
+    // }
+    PointCloudPtr base_map_removed(new pcl::PointCloud<PointType>);
+    for (size_t i = 0; i < base_map->points.size(); i++) {
+        auto& point = base_map->points[i];
+        if ((LEGO_TO_ROS_X(point) < boundary.x_min || LEGO_TO_ROS_X(point) > boundary.x_max) ||
+            (LEGO_TO_ROS_Y(point) < boundary.y_min || LEGO_TO_ROS_Y(point) > boundary.y_max) ) {
+            base_map_removed->points.push_back(point);
+        }
+        // int idx = static_cast<int>(point.intensity);
+        // if (base_poses_to_remove.find(idx) == base_poses_to_remove.end()) {
+        //     base_map_removed->points.push_back(point);
+        // }
+    }
+    base_map_removed->width = base_map_removed->points.size();
+    base_map_removed->height = 1; // 假设是无序点云
+    base_map_removed->is_dense = true;
+    savePCDFile<PointType>(base_map_name + "/GlobalMap_removed.pcd", base_map_removed);
     exit(0); // 调试boundary
     // =================== 3.NDT精细对齐 ===================
     PointCloudPtr final_cloud(new pcl::PointCloud<PointType>);

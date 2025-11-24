@@ -1,6 +1,7 @@
 base_map_dir: "Maps/zhenhai03"
 align_map_dir: "Maps/xj1"
 final_map_dir: "Maps/zhenhai03-fix"
+base_map_removed_area: [[2.68, -10.87], [18, 15.66]]
 thre_z_min: -0.2
 thre_z_max: 2.0
 align_to_base_t: [2.62, -44.04, 0.00]
