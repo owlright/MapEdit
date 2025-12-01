@@ -74,7 +74,7 @@ int main(int argc, char **argv)
 
     // =================== 2.加载点云并初步对齐 ===================
     PointCloudPtr base_map(new pcl::PointCloud<pcl::PointXYZI>);
-    loadPCDFile<PointType>(base_map_name + "/edited/CornerMap_active.pcd", base_map);
+    loadPCDFile<PointType>(base_map_name + "/CornerMap.pcd", base_map);
     // convertToROSCoordinate<PointType>(base_map);
     // savePCDFile<PointType>(base_map_name + "/GlobalMap_ros.pcd", base_map); // 调试
 
@@ -121,9 +121,8 @@ int main(int argc, char **argv)
 
     int base_traj_max_idx = -1;
 
-    // 加载trajectory_active.pcd才能知道哪些位姿没有被删除
     PointCloudPtr base_trajectory(new pcl::PointCloud<pcl::PointXYZI>);
-    loadPCDFile<PointType>(base_map_name + "/edited/trajectory_active.pcd", base_trajectory);
+    loadPCDFile<PointType>(base_map_name + "/trajectory.pcd", base_trajectory); // TODO: 对于直接在修改后的地图上运行不需要再加载trajectory.pcd
     for (size_t i = 0; i < base_trajectory->points.size(); ++i) {
         auto& point = base_trajectory->points[i];
         int idx = static_cast<int>(point.intensity);
@@ -183,7 +182,7 @@ int main(int argc, char **argv)
     // trajectory.pcd中的点也需要应用同样的变换，并且修改点的intensity值以避免与base_map的轨迹点冲突
     // pose.txt中的位姿也需要相应修改
     PointCloudPtr base_corner_map(new pcl::PointCloud<PointType>);
-    loadPCDFile<PointType>(base_map_name + "/edited/CornerMap_active.pcd", base_corner_map);
+    loadPCDFile<PointType>(base_map_name + "/CornerMap.pcd", base_corner_map);
     PointCloudPtr aligned_corner_map(new pcl::PointCloud<PointType>);
     loadPCDFile<PointType>(aligned_map_name + "/CornerMap.pcd", aligned_corner_map);
     for (size_t i = 0; i < aligned_corner_map->points.size(); ++i) {
@@ -197,7 +196,7 @@ int main(int argc, char **argv)
     savePCDFile<PointType>(final_map_name + "/CornerMap.pcd", final_corner_map);
 
     PointCloudPtr base_surf_map(new pcl::PointCloud<PointType>);
-    loadPCDFile<PointType>(base_map_name + "/edited/SurfMap_active.pcd", base_surf_map);
+    loadPCDFile<PointType>(base_map_name + "/SurfMap.pcd", base_surf_map);
     PointCloudPtr aligned_surf_map(new pcl::PointCloud<PointType>);
     loadPCDFile<PointType>(aligned_map_name + "/SurfMap.pcd", aligned_surf_map);
     for (size_t i = 0; i < aligned_surf_map->points.size(); ++i) {
