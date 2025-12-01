@@ -18,7 +18,7 @@ std::string aligned_map_name = "Maps/22F-ext";
 std::string final_map_name = "Maps/22F-final";
 Eigen::Vector3f align_to_base_t = Eigen::Vector3f::Zero();
 Eigen::Vector3f align_to_base_rpy_deg = Eigen::Vector3f::Zero();
-
+Eigen::Vector3f align_to_base_rpy_rad = Eigen::Vector3f::Zero();
 void printParams() {
     std::cout << "==================== " << "MapEdit's params" <<  " ===================="<< std::endl;
     std::cout << "base_map_name: " << base_map_name << std::endl;
@@ -50,7 +50,8 @@ int main(int argc, char **argv)
         }
         std::vector<double> rpy_vec = cfg["align_to_base_rpy_deg"].as<std::vector<double>>();
         if (rpy_vec.size() == 3) {
-            align_to_base_rpy_deg = Eigen::Vector3f(rpy_vec[0] * M_PI / 180.0, rpy_vec[1] * M_PI / 180.0, rpy_vec[2] * M_PI / 180.0);
+            align_to_base_rpy_deg = Eigen::Vector3f(rpy_vec[0], rpy_vec[1], rpy_vec[2]);
+            align_to_base_rpy_rad = Eigen::Vector3f(rpy_vec[0] * M_PI / 180.0, rpy_vec[1] * M_PI / 180.0, rpy_vec[2] * M_PI / 180.0);
         } else {
             std::cerr << "align_to_base_rpy_deg size is not 3!" << std::endl;
             return -1;
@@ -67,9 +68,9 @@ int main(int argc, char **argv)
     align_to_base_t_lego.y() = align_to_base_t.z();
     align_to_base_t_lego.z() = align_to_base_t.x();
     Eigen::Vector3f align_to_base_rpy_lego;
-    align_to_base_rpy_lego.x() = align_to_base_rpy_deg.y();
-    align_to_base_rpy_lego.y() = align_to_base_rpy_deg.z();
-    align_to_base_rpy_lego.z() = align_to_base_rpy_deg.x();
+    align_to_base_rpy_lego.x() = align_to_base_rpy_rad.y();
+    align_to_base_rpy_lego.y() = align_to_base_rpy_rad.z();
+    align_to_base_rpy_lego.z() = align_to_base_rpy_rad.x();
 
     // =================== 2.加载点云并初步对齐 ===================
     PointCloudPtr base_map(new pcl::PointCloud<pcl::PointXYZI>);
