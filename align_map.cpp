@@ -90,11 +90,13 @@ int main(int argc, char **argv)
     PointCloudPtr aligned_map_transformed(new pcl::PointCloud<pcl::PointXYZI>);
     aligned_map_transformed->resize(aligned_map->points.size());
     applyTransform<PointType>(aligned_map, aligned_map_transformed, align_to_base_R_lego, align_to_base_t_lego);
-    // savePCDFile<PointType>(aligned_map_name + "/GlobalMap_transformed.pcd", aligned_map_transformed);
+    savePCDFile<PointType>(aligned_map_name + "/CornerMap_transformed.pcd", aligned_map_transformed);
 
     // =================== 3.NDT精细对齐 ===================
     PointCloudPtr final_cloud(new pcl::PointCloud<PointType>);
     pcl::NormalDistributionsTransform<PointType, PointType> ndt;
+    ndt.setTransformationEpsilon(0.001);
+    ndt.setMaximumIterations(50);
     ndt.setInputSource(aligned_map_transformed);
     ndt.setInputTarget(base_map);
     ndt.align(*final_cloud);
@@ -105,6 +107,11 @@ int main(int argc, char **argv)
     // 将初步对齐的变换和NDT的变换结合，得到最终的变换
     Eigen::Matrix3f R_final = R_ndt * align_to_base_R_lego;
     Eigen::Vector3f t_final = R_ndt * align_to_base_t_lego + t_ndt;
+
+    // 保存一个应用R_final和t_final变换后的aligned_map点云，供调试查看
+    PointCloudPtr aligned_map_ndt_transformed(new pcl::PointCloud<pcl::PointXYZI>);
+    applyTransform<PointType>(aligned_map, aligned_map_ndt_transformed, R_final, t_final);
+    savePCDFile<PointType>(aligned_map_name + "/CornerMap_ndt_transformed.pcd", aligned_map_ndt_transformed);
 
     // =================== 4.合并pose.txt和trajectory.pcd ===================
     std::map<int, Pose> base_poses;
