@@ -101,6 +101,8 @@ int main(int argc, char **argv)
     ndt.setInputTarget(base_map);
     ndt.align(*final_cloud);
     auto finalTransformation = ndt.getFinalTransformation(); // NOTICE: 这是我们最终需要的变换矩阵
+    std::cout << "NDT alignment completed in " << ndt.getFinalNumIteration() << " iterations." << std::endl;
+    std::cout << "Final transformation epsilon: " << ndt.getTransformationEpsilon() << std::endl;
     std::cout << "Final finalTransformation matrix:\n" << finalTransformation << std::endl;
     Eigen::Matrix3f R_ndt = finalTransformation.block<3, 3>(0, 0);
     Eigen::Vector3f t_ndt = finalTransformation.block<3, 1>(0, 3);
