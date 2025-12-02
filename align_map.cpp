@@ -110,11 +110,6 @@ int main(int argc, char **argv)
     Eigen::Matrix3f R_final = R_ndt * align_to_base_R_lego;
     Eigen::Vector3f t_final = R_ndt * align_to_base_t_lego + t_ndt;
 
-    // 保存一个应用R_final和t_final变换后的aligned_map点云，供调试查看
-    PointCloudPtr aligned_map_ndt_transformed(new pcl::PointCloud<pcl::PointXYZI>);
-    applyTransform<PointType>(aligned_map, aligned_map_ndt_transformed, R_final, t_final);
-    savePCDFile<PointType>(aligned_map_name + "/CornerMap_ndt_transformed.pcd", aligned_map_ndt_transformed);
-
     // =================== 4.合并pose.txt和trajectory.pcd ===================
     std::map<int, Pose> base_poses;
     loadPosesFromFile(base_map_name + "/pose.txt", base_poses);
@@ -194,6 +189,7 @@ int main(int argc, char **argv)
     }
     PointCloudPtr final_corner_map(new pcl::PointCloud<PointType>);
     applyTransform<PointType>(aligned_corner_map, R_final, t_final);
+    savePCDFile<PointType>(aligned_map_name + "/CornerMap_aligned.pcd", aligned_corner_map);
     *final_corner_map = *base_corner_map + *aligned_corner_map;
     savePCDFile<PointType>(final_map_name + "/CornerMap.pcd", final_corner_map);
 
@@ -208,6 +204,7 @@ int main(int argc, char **argv)
     }
     PointCloudPtr final_surf_map(new pcl::PointCloud<PointType>);
     applyTransform<PointType>(aligned_surf_map, R_final, t_final);
+    savePCDFile<PointType>(aligned_map_name + "/SurfMap_aligned.pcd", aligned_surf_map);
     *final_surf_map = *base_surf_map + *aligned_surf_map;
     savePCDFile<PointType>(final_map_name + "/SurfMap.pcd", final_surf_map);
 
