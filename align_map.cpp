@@ -116,21 +116,11 @@ int main(int argc, char **argv)
     std::map<int, Pose> aligned_poses;
     loadPosesFromFile(aligned_map_name + "/pose.txt", aligned_poses);
 
-    int base_traj_max_idx = -1;
+    int base_traj_max_idx = base_poses.rbegin()->first;
+    std::cout << "Base Traj Max Idx: " << base_traj_max_idx << std::endl;
 
     PointCloudPtr base_trajectory(new pcl::PointCloud<pcl::PointXYZI>);
     loadPCDFile<PointType>(base_map_name + "/trajectory.pcd", base_trajectory); // TODO: 对于直接在修改后的地图上运行不需要再加载trajectory.pcd
-    for (size_t i = 0; i < base_trajectory->points.size(); ++i) {
-        auto& point = base_trajectory->points[i];
-        int idx = static_cast<int>(point.intensity);
-        if (idx > base_traj_max_idx) {
-            base_traj_max_idx = idx;
-        }
-        base_poses.at(idx).active = true;
-        // final_poses.emplace_back(base_poses.at(idx));
-        // std::cout << "Base Traj Point " << i << ": " << point.x << " " << point.y << " " << point.z << " " << point.intensity << std::endl;
-    }
-    std::cout << "Base Traj Max Idx: " << base_traj_max_idx << std::endl;
 
     // 加载准备合并的地图的trajectory.pcd，修改它的位姿序号从base_map最大值开始递增
     PointCloudPtr aligned_trajectory(new pcl::PointCloud<pcl::PointXYZI>);
